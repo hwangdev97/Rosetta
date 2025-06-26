@@ -26,7 +26,7 @@ pub struct LocalizationEntry {
     pub comment: Option<String>,
     #[serde(rename = "shouldTranslate", skip_serializing_if = "Option::is_none")]
     pub should_translate: Option<bool>,
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    #[serde(skip_serializing_if = "HashMap::is_empty", default)]
     pub localizations: HashMap<String, Localization>,
 }
 

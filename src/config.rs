@@ -7,6 +7,9 @@ use crate::ai_provider::AIProvider;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
+    pub api_key: String,
+    pub base_url: String,
+    pub model: String,
     pub default_language: String,
     pub project_path: Option<String>,
     pub ai_provider: AIProvider,
@@ -15,6 +18,9 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            api_key: String::new(),
+            base_url: String::from("https://openrouter.ai/api/v1"),
+            model: String::from("anthropic/claude-3.5-sonnet"),
             default_language: String::from("en"),
             project_path: None,
             ai_provider: AIProvider::OpenAI {
@@ -26,15 +32,15 @@ impl Default for Config {
 }
 
 impl Config {
-    pub fn load() -> Result<Self> {
+    pub fn load() -> Result<Option<Self>> {
         let config_path = Self::config_path()?;
         if !config_path.exists() {
-            return Ok(Self::default());
+            return Ok(None);
         }
 
         let content = fs::read_to_string(config_path)?;
         let config = serde_json::from_str(&content)?;
-        Ok(config)
+        Ok(Some(config))
     }
 
     pub fn save(&self) -> Result<()> {
@@ -68,6 +74,40 @@ impl Config {
     pub fn update_project_path(&mut self, path: Option<String>) -> Result<()> {
         self.project_path = path;
         self.save()
+    }
+
+    pub fn new(api_key: String, default_language: String, project_path: Option<String>) -> Self {
+        Self {
+            api_key,
+            base_url: String::from("https://openrouter.ai/api/v1"),
+            model: String::from("anthropic/claude-3.5-sonnet"),
+            default_language,
+            project_path,
+            ai_provider: AIProvider::OpenAI {
+                api_key: String::new(),
+                model: String::from("gpt-3.5-turbo"),
+            },
+        }
+    }
+
+    /// Display the current configuration in a user-friendly format.
+    pub fn display(&self) {
+        println!("\nCurrent Configuration");
+        println!("  Default language : {}", self.default_language);
+        println!("  Project path     : {}", self.project_path.as_deref().unwrap_or("<not set>"));
+        println!("  Base URL         : {}", self.base_url);
+        println!("  Model            : {}", self.model);
+        match &self.ai_provider {
+            crate::ai_provider::AIProvider::OpenAI { model, .. } => {
+                println!("  Provider         : OpenAI ({})", model);
+            }
+            crate::ai_provider::AIProvider::Claude { model, .. } => {
+                println!("  Provider         : Claude ({})", model);
+            }
+            crate::ai_provider::AIProvider::Gemini { model, .. } => {
+                println!("  Provider         : Gemini ({})", model);
+            }
+        }
     }
 }
 

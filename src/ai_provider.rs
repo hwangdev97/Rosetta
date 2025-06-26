@@ -1,7 +1,14 @@
 use anyhow::Result;
-use async_openai::{Client as OpenAIClient, types::{CreateChatCompletionRequestArgs, ChatCompletionRequestMessage, Role}};
-use anthropic::{Client as AnthropicClient, Message};
-use google_generative_ai_rs::{v1::{GenerativeClient, GenerateContentRequest, Part, Contents}};
+use async_openai::{Client as OpenAIClient, types::{CreateChatCompletionRequestArgs, ChatCompletionRequestMessage, Role, ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage, ChatCompletionRequestUserMessageContent}};
+use anthropic::{client::Client as AnthropicClient};
+use google_generative_ai_rs::v1::{
+    api::Client as GeminiClient,
+    gemini::{
+        request::{Request as GeminiRequest, GenerationConfig, SafetySettings},
+        safety::{HarmCategory, HarmBlockThreshold},
+        Content, Part, Role as GeminiRole, Model,
+    },
+};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -31,31 +38,144 @@ pub enum AIProvider {
         api_key: String,
         model: String,
     },
-    Grok {
-        api_key: String,
-        model: String,
-    },
 }
 
 impl AIProvider {
+    pub async fn generate(&self, system_prompt: &str, text: &str) -> Result<String> {
+        match self {
+            AIProvider::OpenAI { api_key, model } => {
+                let config = async_openai::config::OpenAIConfig::new().with_api_key(api_key.clone());
+                let client = OpenAIClient::with_config(config);
+                let request = CreateChatCompletionRequestArgs::default()
+                    .model(model)
+                    .messages([
+                        ChatCompletionRequestMessage::System(
+                            ChatCompletionRequestSystemMessage {
+                                content: system_prompt.to_string(),
+                                name: None,
+                                role: Role::System,
+                            }
+                        ),
+                        ChatCompletionRequestMessage::User(
+                            ChatCompletionRequestUserMessage {
+                                content: ChatCompletionRequestUserMessageContent::Text(text.to_string()),
+                                name: None,
+                                role: Role::User,
+                            }
+                        ),
+                    ])
+                    .build()?;
+
+                let response = client.chat().create(request).await?;
+                Ok(response.choices[0].message.content.clone().unwrap_or_default())
+            }
+            AIProvider::Claude { api_key, model } => {
+                let client = AnthropicClient {
+                    api_key: api_key.clone(),
+                    ..Default::default()
+                };
+
+                let request = anthropic::types::MessagesRequest {
+                    model: model.to_string(),
+                    max_tokens: 1024,
+                    system: system_prompt.to_string(),
+                    messages: vec![anthropic::types::Message {
+                        role: anthropic::types::Role::User,
+                        content: vec![anthropic::types::ContentBlock::Text { text: text.to_string() }],
+                    }],
+                    ..Default::default()
+                };
+
+                let response = client.messages(request).await?;
+                if let Some(content) = response.content.first() {
+                    match content {
+                        anthropic::types::ContentBlock::Text { text } => Ok(text.clone()),
+                        _ => Err(AIError::RequestFailed("Unexpected response content type".to_string()).into()),
+                    }
+                } else {
+                    Err(AIError::RequestFailed("No response content received".to_string()).into())
+                }
+            }
+            AIProvider::Gemini { api_key, model } => {
+                // Map the provided model string onto the crate's `Model` enum. For unknown strings we use `Custom`, available under the `beta` feature.
+                let model_enum = match model.as_str() {
+                    "gemini-1.0-pro" => Model::Gemini1_0Pro,
+                    #[cfg(feature = "beta")]
+                    _ => Model::Custom(model.clone()),
+                    #[cfg(not(feature = "beta"))]
+                    _ => Model::Gemini1_0Pro,
+                };
+
+                let client = GeminiClient::new_from_model(model_enum, api_key.clone());
+
+                // Build the request payload expected by the new SDK.
+                let request = GeminiRequest {
+                    contents: vec![Content {
+                        role: GeminiRole::User,
+                        parts: vec![Part {
+                            text: Some(format!("{}\n{}", system_prompt, text)),
+                            inline_data: None,
+                            file_data: None,
+                            video_metadata: None,
+                        }],
+                    }],
+                    tools: vec![],
+                    safety_settings: vec![SafetySettings {
+                        category: HarmCategory::HarmCategoryHarassment,
+                        threshold: HarmBlockThreshold::BlockNone,
+                    }],
+                    generation_config: Some(GenerationConfig {
+                        temperature: Some(0.7),
+                        top_p: Some(0.8),
+                        top_k: Some(40),
+                        candidate_count: Some(1),
+                        max_output_tokens: Some(1024),
+                        stop_sequences: None,
+                        response_mime_type: None,
+                        response_schema: None,
+                    }),
+                    system_instruction: None,
+                };
+
+                // Execute the request (30-second timeout).
+                let post_result = client
+                    .post(30, &request)
+                    .await
+                    .map_err(|e| AIError::RequestFailed(e.to_string()))?;
+
+                // Extract the plain (non-streamed) response text.
+                if let Some(rest) = post_result.rest() {
+                    if let Some(candidate) = rest.candidates.first() {
+                        if let Some(part) = candidate.content.parts.first() {
+                            if let Some(text) = &part.text {
+                                return Ok(text.clone());
+                            }
+                        }
+                    }
+                }
+
+                Err(AIError::RequestFailed("No valid response received".to_string()).into())
+            }
+        }
+    }
+
     pub fn available_models(&self) -> Vec<String> {
         match self {
             AIProvider::OpenAI { .. } => vec![
-                "gpt-4-turbo-preview".to_string(),
                 "gpt-4".to_string(),
                 "gpt-3.5-turbo".to_string(),
             ],
             AIProvider::Claude { .. } => vec![
                 "claude-3-opus-20240229".to_string(),
-                "claude-3-sonnet-20240229".to_string(),
                 "claude-2.1".to_string(),
             ],
             AIProvider::Gemini { .. } => vec![
-                "gemini-pro".to_string(),
-                "gemini-pro-vision".to_string(),
-            ],
-            AIProvider::Grok { .. } => vec![
-                "grok-1".to_string(),
+                "gemini-1.5-pro-latest".to_string(),
+                "gemini-1.0-pro".to_string(),
+                "gemini-1.5-pro-latest".to_string(),
+                "gemini-1.5-flash".to_string(),
+                "gemini-1.5-flash-8b".to_string(),
+                "gemini-2.0-flash-exp".to_string(),
             ],
         }
     }
@@ -68,92 +188,7 @@ impl AIProvider {
             target_language
         );
 
-        match self {
-            AIProvider::OpenAI { api_key, model } => {
-                let client = OpenAIClient::new().with_api_key(api_key);
-                let request = CreateChatCompletionRequestArgs::default()
-                    .model(model)
-                    .messages([
-                        ChatCompletionRequestMessage {
-                            role: Role::System,
-                            content: system_prompt,
-                            name: None,
-                            function_call: None,
-                            tool_calls: None,
-                            tool_call_id: None,
-                        },
-                        ChatCompletionRequestMessage {
-                            role: Role::User,
-                            content: text.to_string(),
-                            name: None,
-                            function_call: None,
-                            tool_calls: None,
-                            tool_call_id: None,
-                        },
-                    ])
-                    .build()?;
-
-                let response = client.chat().create(request).await?;
-                Ok(response.choices[0].message.content.clone().unwrap_or_default())
-            }
-
-            AIProvider::Claude { api_key, model } => {
-                let client = AnthropicClient::new(api_key.clone());
-                let message = Message::new(model)
-                    .system_prompt(system_prompt)
-                    .user_prompt(text);
-
-                let response = client.messages().create(message).await?;
-                Ok(response.content)
-            }
-
-            AIProvider::Gemini { api_key, model } => {
-                let client = GenerativeClient::new(api_key);
-                let request = GenerateContentRequest {
-                    contents: vec![Contents {
-                        parts: vec![
-                            Part::text(system_prompt),
-                            Part::text(text.to_string()),
-                        ],
-                    }],
-                    model: model.clone(),
-                    ..Default::default()
-                };
-
-                let response = client.generate_content(request).await?;
-                Ok(response.candidates[0].content.parts[0].text.clone())
-            }
-
-            AIProvider::Grok { api_key, model } => {
-                // Note: Grok API is still in development, this is a placeholder
-                // implementation based on their current API structure
-                let client = reqwest::Client::new();
-                let response = client
-                    .post("https://api.grok.x/v1/chat/completions")
-                    .header("Authorization", format!("Bearer {}", api_key))
-                    .json(&serde_json::json!({
-                        "model": model,
-                        "messages": [
-                            {
-                                "role": "system",
-                                "content": system_prompt
-                            },
-                            {
-                                "role": "user",
-                                "content": text
-                            }
-                        ]
-                    }))
-                    .send()
-                    .await?;
-
-                let json: serde_json::Value = response.json().await?;
-                Ok(json["choices"][0]["message"]["content"]
-                    .as_str()
-                    .unwrap_or_default()
-                    .to_string())
-            }
-        }
+        self.generate(&system_prompt, text).await
     }
 
     pub async fn test_connection(&self) -> Result<bool> {
@@ -185,35 +220,55 @@ mod tests {
 
         let gemini = AIProvider::Gemini {
             api_key: "test".to_string(),
-            model: "gemini-pro".to_string(),
+            model: "gemini-1.5-pro-latest".to_string(),
         };
-        assert!(gemini.available_models().contains(&"gemini-pro".to_string()));
-        assert!(gemini.available_models().contains(&"gemini-pro-vision".to_string()));
-
-        let grok = AIProvider::Grok {
-            api_key: "test".to_string(),
-            model: "grok-1".to_string(),
-        };
-        assert!(grok.available_models().contains(&"grok-1".to_string()));
+        assert!(gemini.available_models().contains(&"gemini-1.5-pro-latest".to_string()));
+        assert!(gemini.available_models().contains(&"gemini-1.0-pro".to_string()));
+        assert!(gemini.available_models().contains(&"gemini-1.5-pro-latest".to_string()));
+        assert!(gemini.available_models().contains(&"gemini-1.5-flash".to_string()));
+        assert!(gemini.available_models().contains(&"gemini-1.5-flash-8b".to_string()));
+        assert!(gemini.available_models().contains(&"gemini-2.0-flash-exp".to_string()));
     }
 
     #[tokio::test]
     async fn test_translate_with_mock() {
-        // This is a mock test that doesn't make actual API calls
+        // Test OpenAI with invalid key
         let provider = AIProvider::OpenAI {
             api_key: "invalid_key".to_string(),
             model: "gpt-4".to_string(),
         };
-        
         let result = provider.translate("Hello", "ja").await;
-        assert!(result.is_err()); // Should fail with invalid key
+        assert!(result.is_err());
 
+        // Test Claude with invalid key
         let provider = AIProvider::Claude {
             api_key: "invalid_key".to_string(),
             model: "claude-3-opus-20240229".to_string(),
         };
-        
         let result = provider.translate("Hello", "ja").await;
-        assert!(result.is_err()); // Should fail with invalid key
+        assert!(result.is_err());
+
+        // Test Gemini with invalid key
+        let provider = AIProvider::Gemini {
+            api_key: "invalid_key".to_string(),
+            model: "gemini-1.5-pro-latest".to_string(),
+        };
+        let result = provider.translate("Hello", "ja").await;
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_ai_error_display() {
+        let error = AIError::InvalidAPIKey;
+        assert_eq!(error.to_string(), "Invalid API key");
+
+        let error = AIError::RequestFailed("Network error".to_string());
+        assert_eq!(error.to_string(), "API request failed: Network error");
+
+        let error = AIError::RateLimitExceeded;
+        assert_eq!(error.to_string(), "Rate limit exceeded");
+
+        let error = AIError::ModelNotAvailable;
+        assert_eq!(error.to_string(), "Model not available");
     }
 } 

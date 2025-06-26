@@ -43,7 +43,6 @@ dirs = "5.0"
 colored = "2.1"
 
 # AI APIs
-google-generative-ai-rs = "0.1"
+google-generative-ai-rs = { version = "0.3.4", features = ["beta"] }
 async-openai = "0.18"
-anthropic = "0.5"
-grok = { git = "https://github.com/xai-org/grok-1", version = "0.1" }
+anthropic = "0.0.8"

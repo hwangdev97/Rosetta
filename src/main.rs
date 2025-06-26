@@ -149,27 +149,40 @@ async fn main() -> Result<()> {
             model,
             auto,
         }) => {
-            // Load config if available
-            let mut config = Config::load()?;
-            
-            // Use config values as fallbacks
-            let api_key = api_key.or_else(|| config.as_ref().map(|c| c.api_key.clone()));
-            let base_url = if base_url == "https://openrouter.ai/api/v1" {
-                config.as_ref().map(|c| c.base_url.clone()).unwrap_or(base_url)
+            // Load config (or default) and merge CLI overrides.
+            let mut config = Config::load()?.unwrap_or_default();
+
+            // Determine effective values with CLI having priority.
+            let effective_api_key = api_key.unwrap_or_else(|| config.api_key.clone());
+            let effective_base_url = if base_url == "https://openrouter.ai/api/v1" {
+                config.base_url.clone()
             } else {
                 base_url
             };
-            let model = if model == "anthropic/claude-3.5-sonnet" {
-                config.as_ref().map(|c| c.model.clone()).unwrap_or(model)
+            let effective_model = if model == "anthropic/claude-3.5-sonnet" {
+                config.model.clone()
             } else {
                 model
             };
-            
-            if let Some(l) = language {
-                config.update_default_language(l)?;
+
+            // Resolve language (CLI > config default).
+            let language_value = language.as_ref().unwrap_or(&config.default_language).clone();
+
+            // Persist updated default language if changed via CLI.
+            if language.is_some() && language_value != config.default_language {
+                config.update_default_language(language_value.clone())?;
             }
-            
-            translate_command(file, api_key, mode, base_url, model, auto).await?;
+
+            translate_command(
+                file,
+                Some(effective_api_key),
+                mode,
+                effective_base_url,
+                effective_model,
+                auto,
+                language_value,
+            )
+            .await?;
         }
         Some(Commands::Setup) => {
             if let Some(config) = Onboarding::start().await? {
@@ -190,11 +203,14 @@ async fn main() -> Result<()> {
             }
         }
         Some(Commands::Test) => {
-            let config = Config::load()?;
-            match config.ai_provider.test_connection().await {
-                Ok(true) => println!("{}", "Connection test successful!".green()),
-                Ok(false) => println!("{}", "Connection test failed.".red()),
-                Err(e) => println!("{} {}", "Error:".red(), e),
+            if let Some(config) = Config::load()? {
+                match config.ai_provider.test_connection().await {
+                    Ok(true) => println!("{}", "Connection test successful!".green()),
+                    Ok(false) => println!("{}", "Connection test failed.".red()),
+                    Err(e) => println!("{} {}", "Error:".red(), e),
+                }
+            } else {
+                println!("No configuration found. Run 'rosetta setup' first.");
             }
         }
         None => {
@@ -233,6 +249,7 @@ async fn translate_command(
     base_url: String,
     model: String,
     auto: bool,
+    language: String,
 ) -> Result<()> {
     // Print welcome banner
     UI::print_banner();

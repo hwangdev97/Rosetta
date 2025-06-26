@@ -2,7 +2,6 @@ use crate::ascii_art::ROSETTA_LOGO;
 use anyhow::Result;
 use colored::*;
 use dialoguer::{theme::ColorfulTheme, Input, Select};
-use std::path::PathBuf;
 
 use crate::config::Config;
 use crate::ai_provider::AIProvider;
@@ -10,7 +9,7 @@ use crate::ai_provider::AIProvider;
 pub struct OnboardingConfig {
     pub api_key: String,
     pub default_language: String,
-    pub project_path: PathBuf,
+    pub project_path: Option<String>,
 }
 
 pub struct Onboarding;
@@ -47,7 +46,7 @@ impl Onboarding {
         println!("{}", "🔑 API Configuration".bright_white().bold());
         
         // Select AI provider
-        let providers = vec!["OpenAI", "Claude", "Google Gemini", "Grok"];
+        let providers = vec!["OpenAI", "Claude", "Google Gemini"];
         let provider_idx = Select::with_theme(&ColorfulTheme::default())
             .with_prompt("Select your AI provider")
             .items(&providers)
@@ -60,7 +59,7 @@ impl Onboarding {
             .interact_text()?;
 
         // Select model based on provider
-        let provider = match provider_idx {
+        let _provider = match provider_idx {
             0 => {
                 let models = vec!["gpt-4-turbo-preview", "gpt-4", "gpt-3.5-turbo"];
                 let model_idx = Select::with_theme(&ColorfulTheme::default())
@@ -70,7 +69,7 @@ impl Onboarding {
                     .interact()?;
                 
                 AIProvider::OpenAI {
-                    api_key,
+                    api_key: api_key.clone(),
                     model: models[model_idx].to_string(),
                 }
             }
@@ -87,12 +86,18 @@ impl Onboarding {
                     .interact()?;
                 
                 AIProvider::Claude {
-                    api_key,
+                    api_key: api_key.clone(),
                     model: models[model_idx].to_string(),
                 }
             }
             2 => {
-                let models = vec!["gemini-pro", "gemini-pro-vision"];
+                let models = vec![
+                    "gemini-1.5-pro-latest",
+                    "gemini-1.0-pro",
+                    "gemini-1.5-flash",
+                    "gemini-1.5-flash-8b",
+                    "gemini-2.0-flash-exp",
+                ];
                 let model_idx = Select::with_theme(&ColorfulTheme::default())
                     .with_prompt("Select Gemini model")
                     .items(&models)
@@ -100,14 +105,10 @@ impl Onboarding {
                     .interact()?;
                 
                 AIProvider::Gemini {
-                    api_key,
+                    api_key: api_key.clone(),
                     model: models[model_idx].to_string(),
                 }
             }
-            3 => AIProvider::Grok {
-                api_key,
-                model: "grok-1".to_string(),
-            },
             _ => unreachable!(),
         };
 
@@ -150,13 +151,13 @@ impl Onboarding {
 }
 
 pub async fn run() -> Result<()> {
-    println!("{}", ascii_art::LOGO);
+    println!("{}", ROSETTA_LOGO);
     println!("Welcome to Rosetta! Let's get you set up.\n");
 
     let theme = ColorfulTheme::default();
 
     // Select AI provider
-    let providers = vec!["OpenAI", "Claude", "Google Gemini", "Grok"];
+    let providers = vec!["OpenAI", "Claude", "Google Gemini"];
     let provider_idx = Select::with_theme(&theme)
         .with_prompt("Select your AI provider")
         .items(&providers)
@@ -201,7 +202,13 @@ pub async fn run() -> Result<()> {
             }
         }
         2 => {
-            let models = vec!["gemini-pro", "gemini-pro-vision"];
+            let models = vec![
+                "gemini-1.5-pro-latest",
+                "gemini-1.0-pro",
+                "gemini-1.5-flash",
+                "gemini-1.5-flash-8b",
+                "gemini-2.0-flash-exp",
+            ];
             let model_idx = Select::with_theme(&theme)
                 .with_prompt("Select Gemini model")
                 .items(&models)
@@ -213,10 +220,6 @@ pub async fn run() -> Result<()> {
                 model: models[model_idx].to_string(),
             }
         }
-        3 => AIProvider::Grok {
-            api_key,
-            model: "grok-1".to_string(),
-        },
         _ => unreachable!(),
     };
 
@@ -251,4 +254,162 @@ pub async fn run() -> Result<()> {
     println!("  rosetta test");
 
     Ok(())
+}
+
+pub async fn select_ai_provider() -> Result<AIProvider> {
+    let providers = vec![
+        "OpenAI (GPT-4, GPT-3.5)",
+        "Anthropic (Claude)",
+        "Google (Gemini)",
+    ];
+
+    let provider_idx = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Select an AI provider")
+        .items(&providers)
+        .default(0)
+        .interact()?;
+
+    let provider = match provider_idx {
+        0 => {
+            let models = vec![
+                "gpt-4",
+                "gpt-3.5-turbo",
+            ];
+            let model_idx = Select::with_theme(&ColorfulTheme::default())
+                .with_prompt("Select a model")
+                .items(&models)
+                .default(0)
+                .interact()?;
+
+            let api_key = dialoguer::Password::with_theme(&ColorfulTheme::default())
+                .with_prompt("Enter your OpenAI API key")
+                .interact()?;
+
+            AIProvider::OpenAI {
+                api_key,
+                model: models[model_idx].to_string(),
+            }
+        }
+        1 => {
+            let models = vec![
+                "claude-3-opus-20240229",
+                "claude-2.1",
+            ];
+            let model_idx = Select::with_theme(&ColorfulTheme::default())
+                .with_prompt("Select a model")
+                .items(&models)
+                .default(0)
+                .interact()?;
+
+            let api_key = dialoguer::Password::with_theme(&ColorfulTheme::default())
+                .with_prompt("Enter your Anthropic API key")
+                .interact()?;
+
+            AIProvider::Claude {
+                api_key,
+                model: models[model_idx].to_string(),
+            }
+        }
+        2 => {
+            let models = vec![
+                "gemini-1.5-pro-latest",
+                "gemini-1.0-pro",
+                "gemini-1.5-flash",
+                "gemini-1.5-flash-8b",
+                "gemini-2.0-flash-exp",
+            ];
+            let model_idx = Select::with_theme(&ColorfulTheme::default())
+                .with_prompt("Select a model")
+                .items(&models)
+                .default(0)
+                .interact()?;
+
+            let api_key = dialoguer::Password::with_theme(&ColorfulTheme::default())
+                .with_prompt("Enter your Google API key")
+                .interact()?;
+
+            AIProvider::Gemini {
+                api_key,
+                model: models[model_idx].to_string(),
+            }
+        }
+        _ => unreachable!(),
+    };
+
+    Ok(provider)
+}
+
+pub async fn select_target_language() -> Result<String> {
+    let languages = vec![
+        "Chinese (Simplified) - zh-CN",
+        "Chinese (Traditional) - zh-TW",
+        "Japanese - ja",
+        "Korean - ko",
+        "French - fr",
+        "German - de",
+        "Italian - it",
+        "Spanish - es",
+        "Portuguese - pt",
+        "Russian - ru",
+        "Arabic - ar",
+        "Hindi - hi",
+        "Vietnamese - vi",
+        "Thai - th",
+        "Indonesian - id",
+    ];
+
+    let language_idx = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Select target language")
+        .items(&languages)
+        .default(0)
+        .interact()?;
+
+    Ok(languages[language_idx].split(" - ").nth(1).unwrap().to_string())
+}
+
+pub async fn select_mode() -> Result<bool> {
+    let modes = vec![
+        "Interactive mode (translate one string at a time)",
+        "Batch mode (translate all strings in a file)",
+    ];
+
+    let mode_idx = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Select translation mode")
+        .items(&modes)
+        .default(0)
+        .interact()?;
+
+    Ok(mode_idx == 0)
+}
+
+pub async fn select_ai_provider_for_test() -> Result<AIProvider> {
+    let providers = vec![
+        "OpenAI (GPT-4, GPT-3.5)",
+        "Anthropic (Claude)",
+        "Google (Gemini)",
+    ];
+
+    let provider_idx = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Select an AI provider for testing")
+        .items(&providers)
+        .default(0)
+        .interact()?;
+
+    let provider = match provider_idx {
+        0 => AIProvider::OpenAI {
+            api_key: "test".to_string(),
+            model: "gpt-4".to_string(),
+        },
+        1 => AIProvider::Claude {
+            api_key: "test".to_string(),
+            model: "claude-3-opus-20240229".to_string(),
+        },
+        2 => AIProvider::Gemini {
+            api_key: "test".to_string(),
+            model: "gemini-1.5-pro-latest".to_string(),
+        },
+        _ => unreachable!(),
+    };
+
+    Ok(provider)
 } 
