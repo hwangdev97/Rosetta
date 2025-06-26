@@ -1,1 +1,0 @@
-/Users/hwang/Develop/CLI/i18nTools/target/release/i18n-translator: /Users/hwang/Develop/CLI/i18nTools/src/error.rs /Users/hwang/Develop/CLI/i18nTools/src/main.rs /Users/hwang/Develop/CLI/i18nTools/src/translator.rs /Users/hwang/Develop/CLI/i18nTools/src/ui.rs /Users/hwang/Develop/CLI/i18nTools/src/xcstrings.rs
