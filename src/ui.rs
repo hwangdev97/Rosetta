@@ -10,6 +10,7 @@ use std::path::Path;
 use std::time::Duration;
 use anyhow::Result;
 use crate::ascii_art::ROSETTA_LOGO;
+use comfy_table::{Table, presets::UTF8_FULL, ContentArrangement};
 
 pub struct UI {
     pub provider: AIProvider,
@@ -265,8 +266,7 @@ impl UI {
                 .progress_chars("█▉▊▋▌▍▎▏  "),
         );
 
-        let mut success_count = 0;
-        let mut failed_keys = Vec::new();
+        let mut results: Vec<(String, Result<String, String>)> = Vec::new();
 
         // Unicode-safe helper to truncate long keys without splitting multibyte characters.
         fn ellipsize_utf8(s: &str, max_chars: usize) -> String {
@@ -292,50 +292,75 @@ impl UI {
             let display_key = ellipsize_utf8(key, 40);
             pb.set_message(display_key);
 
-            match translator.translate_text(key, target_language, None).await {
-                Ok(translation) => {
-                    if let Err(_) = xcstrings.add_translation(key, target_language, &translation) {
-                        failed_keys.push(key.clone());
-                    } else {
-                        success_count += 1;
-                    }
-                }
-                Err(_) => {
-                    failed_keys.push(key.clone());
-                }
-            }
+            let result = match translator.translate_text(key, target_language, None).await {
+                Ok(t) => Ok(t),
+                Err(e) => Err(e.to_string()),
+            };
+
+            results.push((key.clone(), result));
 
             pb.inc(1);
 
-            // Save periodically
-            if (i + 1) % 10 == 0 {
-                xcstrings.save()?;
-            }
-
-            // Rate limiting
+            // Rate limiting to avoid hitting API limits
             tokio::time::sleep(Duration::from_millis(200)).await;
         }
 
         pb.finish_and_clear();
 
-        // Final save
-        xcstrings.save()?;
+        // Build preview table
+        let mut table = Table::new();
+        table
+            .load_preset(UTF8_FULL)
+            .set_content_arrangement(ContentArrangement::Dynamic)
+            .set_header(vec!["Key", "Translation (preview)", "Status"]);
 
-        // Results summary
-        println!();
-        println!("Batch translation completed");
-        Self::print_info("Successful", &success_count.to_string());
-        Self::print_info("Failed", &failed_keys.len().to_string());
-        
-        if !failed_keys.is_empty() && failed_keys.len() <= 5 {
-            println!();
-            Self::print_substep("Failed keys:");
-            for key in &failed_keys {
-                println!("    {}", key.bright_black());
+        let mut success_count = 0;
+        let mut failed_count = 0;
+
+        for (k, res) in &results {
+            match res {
+                Ok(t) => {
+                    success_count += 1;
+                    table.add_row(vec![
+                        ellipsize_utf8(k, 40),
+                        ellipsize_utf8(t, 60),
+                        "Success".green().to_string(),
+                    ]);
+                }
+                Err(err_msg) => {
+                    failed_count += 1;
+                    table.add_row(vec![
+                        ellipsize_utf8(k, 40),
+                        "-".to_string(),
+                        format!("Error: {}", err_msg).red().to_string(),
+                    ]);
+                }
             }
         }
 
-        println!();
+        println!("\n{}", table);
+
+        println!("\nSummary: {} successes, {} failures", success_count, failed_count);
+
+        let proceed = Confirm::with_theme(&dialoguer::theme::ColorfulTheme::default())
+            .with_prompt("Save successful translations to .xcstrings?")
+            .default(true)
+            .interact()?;
+
+        if proceed {
+            for (k, res) in results {
+                if let Ok(trans) = res {
+                    // Ignore individual save errors, collect later if needed
+                    let _ = xcstrings.add_translation(&k, target_language, &trans);
+                }
+            }
+
+            xcstrings.save()?;
+            Self::print_success("Translations saved.");
+        } else {
+            Self::print_warning("Translations were not saved.");
+        }
+
         Ok(())
     }
 

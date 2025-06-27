@@ -80,6 +80,7 @@ impl Translator {
         language_map.insert("vi".to_string(), "Vietnamese".to_string());
         language_map.insert("ar".to_string(), "Arabic".to_string());
         language_map.insert("hi".to_string(), "Hindi".to_string());
+        language_map.insert("ml".to_string(), "Malayalam".to_string());
         language_map.insert("en‑US".to_string(), "English (United States)".to_string());
         language_map.insert("en‑GB".to_string(), "English (United Kingdom)".to_string());
         language_map.insert("en‑AU".to_string(), "English (Australia)".to_string());
