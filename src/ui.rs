@@ -75,9 +75,16 @@ impl UI {
             let key = &keys[current];
             let remaining = total - current - 1;
 
-            // Clear screen for clean interface
+            // Clear screen for clean interface only when stdout is an interactive TTY
+            // In non-interactive environments (e.g. logging/CI) the escape sequence printed
+            // by `clear_screen()` can appear as a flood of blank lines.  To avoid the
+            // "large empty gap" reported by users, we clear the screen **only** if the
+            // output is attached to a real terminal.
             let term = Term::stdout();
-            term.clear_screen().ok();
+            if console::user_attended() {
+                // Safe to clear in interactive mode.
+                let _ = term.clear_screen();
+            }
             
             // Show progress in Claude Code style
             println!();

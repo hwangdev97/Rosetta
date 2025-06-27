@@ -16,7 +16,6 @@ Modern Rust CLI tool for translating iOS `.xcstrings` files using multiple AI pr
   - OpenAI (GPT-4, GPT-3.5)
   - Anthropic Claude
   - Google Gemini
-  - Grok
 - **iOS Native**: Specifically designed for iOS `.xcstrings` localization files
 - **Interactive Mode**: Choose what to translate with real-time feedback
 - **Batch Processing**: Translate multiple keys at once with progress tracking
@@ -154,7 +153,6 @@ rosetta setup
 - OpenAI (requires API key from [OpenAI](https://platform.openai.com))
 - Claude (requires API key from [Anthropic](https://anthropic.com))
 - Gemini (requires API key from [Google AI Studio](https://makersuite.google.com))
-- Grok (requires API key from [Grok](https://grok.x))
 
 3. Select your preferred model and enter your API key
 
@@ -248,7 +246,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [OpenAI](https://openai.com) for GPT models
 - [Anthropic](https://anthropic.com) for Claude
 - [Google](https://ai.google.dev) for Gemini
-- [xAI](https://grok.x) for Grok
 - The Rust community for amazing crates
 
 ---

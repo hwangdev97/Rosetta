@@ -1,0 +1,30 @@
+name: Publish to Homebrew
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Trigger when pushing a semantic-version tag like v1.2.3
+
+permissions:
+  contents: read  # required by the bump-formula action
+
+jobs:
+  bump-formula:
+    name: Bump Homebrew formula
+    runs-on: ubuntu-latest
+    steps:
+      # 1) Extract raw tag name (v1.2.3 → 1.2.3)
+      - name: Extract version from tag
+        id: vars
+        run: echo "tag_name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      # 2) Automatically open a PR to update Formula/rosetta.rb in your tap
+      - name: Update Rosetta formula in homebrew tap
+        uses: dawidd6/action-homebrew-bump-formula@v5
+        with:
+          token: ${{ secrets.HOMEBREW_PAT }}
+          tap: hwangdev97/homebrew-tools
+          formula: rosetta
+          tag: ${{ steps.vars.outputs.tag_name }}
+          # Source tarball URL generated automatically by GitHub for this tag
+          url: https://github.com/hwangdev97/Rosetta/archive/refs/tags/${{ steps.vars.outputs.tag_name }}.tar.gz 
