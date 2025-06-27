@@ -57,11 +57,40 @@ impl Translator {
         language_map.insert("fr".to_string(), "French".to_string());
         language_map.insert("de".to_string(), "German".to_string());
         language_map.insert("es".to_string(), "Spanish".to_string());
-        language_map.insert("pt".to_string(), "Portuguese".to_string());
+        language_map.insert("pt-PT".to_string(), "Portuguese (Portugal)".to_string());
+        language_map.insert("pt-BR".to_string(), "Portuguese (Brazil)".to_string());
         language_map.insert("it".to_string(), "Italian".to_string());
         language_map.insert("ru".to_string(), "Russian".to_string());
         language_map.insert("ar".to_string(), "Arabic".to_string());
         language_map.insert("hi".to_string(), "Hindi".to_string());
+        language_map.insert("tr".to_string(), "Turkish".to_string());
+        language_map.insert("nl".to_string(), "Dutch".to_string());
+        language_map.insert("pl".to_string(), "Polish".to_string());
+        language_map.insert("sv".to_string(), "Swedish".to_string());
+        language_map.insert("no".to_string(), "Norwegian".to_string());
+        language_map.insert("da".to_string(), "Danish".to_string());
+        language_map.insert("fi".to_string(), "Finnish".to_string());
+        language_map.insert("cs".to_string(), "Czech".to_string());
+        language_map.insert("ro".to_string(), "Romanian".to_string());
+        language_map.insert("uk".to_string(), "Ukrainian".to_string());
+        language_map.insert("el".to_string(), "Greek".to_string());
+        language_map.insert("he".to_string(), "Hebrew".to_string());
+        language_map.insert("id".to_string(), "Indonesian".to_string());
+        language_map.insert("th".to_string(), "Thai".to_string());
+        language_map.insert("vi".to_string(), "Vietnamese".to_string());
+        language_map.insert("ar".to_string(), "Arabic".to_string());
+        language_map.insert("hi".to_string(), "Hindi".to_string());
+        language_map.insert("en‑US".to_string(), "English (United States)".to_string());
+        language_map.insert("en‑GB".to_string(), "English (United Kingdom)".to_string());
+        language_map.insert("en‑AU".to_string(), "English (Australia)".to_string());
+        language_map.insert("en‑CA".to_string(), "English (Canada)".to_string());
+        language_map.insert("en‑NZ".to_string(), "English (New Zealand)".to_string());
+        language_map.insert("en‑ZA".to_string(), "English (South Africa)".to_string());
+        language_map.insert("en‑IN".to_string(), "English (India)".to_string());
+        language_map.insert("en‑SG".to_string(), "English (Singapore)".to_string());
+        language_map.insert("en‑HK".to_string(), "English (Hong Kong)".to_string());
+        language_map.insert("en‑IE".to_string(), "English (Ireland)".to_string());
+  
 
         Self {
             client,

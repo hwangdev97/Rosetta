@@ -62,6 +62,25 @@ impl Config {
     }
 
     pub fn update_ai_provider(&mut self, provider: AIProvider) -> Result<()> {
+        // Keep top-level api_key & model in sync for backwards-compat displays.
+        match &provider {
+            AIProvider::OpenAI { api_key, model } => {
+                self.api_key = api_key.clone();
+                self.model = model.clone();
+                self.base_url = "https://api.openai.com/v1".to_string();
+            }
+            AIProvider::Claude { api_key, model } => {
+                self.api_key = api_key.clone();
+                self.model = model.clone();
+                self.base_url = "https://api.anthropic.com".to_string();
+            }
+            AIProvider::Gemini { api_key, model } => {
+                self.api_key = api_key.clone();
+                self.model = model.clone();
+                self.base_url = "https://generativelanguage.googleapis.com/v1beta".to_string();
+            }
+        }
+
         self.ai_provider = provider;
         self.save()
     }

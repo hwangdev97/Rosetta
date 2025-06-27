@@ -162,20 +162,41 @@ impl AIProvider {
     pub fn available_models(&self) -> Vec<String> {
         match self {
             AIProvider::OpenAI { .. } => vec![
+                "gpt-4o".to_string(),
+                "gpt-4-turbo-preview".to_string(),
                 "gpt-4".to_string(),
                 "gpt-3.5-turbo".to_string(),
             ],
             AIProvider::Claude { .. } => vec![
                 "claude-3-opus-20240229".to_string(),
+                "claude-3-sonnet-20240229".to_string(),
+                "claude-3-haiku-20240307".to_string(),
                 "claude-2.1".to_string(),
             ],
             AIProvider::Gemini { .. } => vec![
+                // 2.5 family
+                "gemini-2.5-pro".to_string(),
+                "gemini-2.5-flash".to_string(),
+                "gemini-2.5-flash-lite-preview-06-17".to_string(),
+                "gemini-2.5-flash-preview-native-audio-dialog".to_string(),
+                "gemini-2.5-flash-exp-native-audio-thinking-dialog".to_string(),
+                "gemini-2.5-flash-preview-tts".to_string(),
+                "gemini-2.5-pro-preview-tts".to_string(),
+
+                // 2.0 family
+                "gemini-2.0-flash".to_string(),
+                "gemini-2.0-flash-preview-image-generation".to_string(),
+                "gemini-2.0-flash-lite".to_string(),
+
+                // 1.5 family
                 "gemini-1.5-pro-latest".to_string(),
-                "gemini-1.0-pro".to_string(),
-                "gemini-1.5-pro-latest".to_string(),
+                "gemini-1.5-pro".to_string(),
+                "gemini-1.5-flash-latest".to_string(),
                 "gemini-1.5-flash".to_string(),
                 "gemini-1.5-flash-8b".to_string(),
-                "gemini-2.0-flash-exp".to_string(),
+
+                // 1.0
+                "gemini-1.0-pro".to_string(),
             ],
         }
     }
@@ -196,6 +217,32 @@ impl AIProvider {
         let result = self.translate(test_text, "ja").await;
         Ok(result.is_ok())
     }
+
+    /// Return a new AIProvider value with the same provider type and API key, but using the
+    /// supplied `model` string. This makes it easy for callers to switch to experimental or
+    /// custom-named models without having to construct a fresh enum variant manually.
+    ///
+    /// Example:
+    /// ```rust
+    /// let provider = AIProvider::OpenAI { api_key: "sk-...".into(), model: "gpt-4o".into() };
+    /// let custom = provider.with_model("my-custom-model".into());
+    /// ```
+    pub fn with_model(&self, model: String) -> Self {
+        match self {
+            AIProvider::OpenAI { api_key, .. } => AIProvider::OpenAI {
+                api_key: api_key.clone(),
+                model,
+            },
+            AIProvider::Claude { api_key, .. } => AIProvider::Claude {
+                api_key: api_key.clone(),
+                model,
+            },
+            AIProvider::Gemini { api_key, .. } => AIProvider::Gemini {
+                api_key: api_key.clone(),
+                model,
+            },
+        }
+    }
 }
 
 #[cfg(test)]
@@ -208,6 +255,8 @@ mod tests {
             api_key: "test".to_string(),
             model: "gpt-4".to_string(),
         };
+        assert!(openai.available_models().contains(&"gpt-4o".to_string()));
+        assert!(openai.available_models().contains(&"gpt-4-turbo-preview".to_string()));
         assert!(openai.available_models().contains(&"gpt-4".to_string()));
         assert!(openai.available_models().contains(&"gpt-3.5-turbo".to_string()));
 
@@ -216,18 +265,20 @@ mod tests {
             model: "claude-3-opus-20240229".to_string(),
         };
         assert!(claude.available_models().contains(&"claude-3-opus-20240229".to_string()));
+        assert!(claude.available_models().contains(&"claude-3-sonnet-20240229".to_string()));
+        assert!(claude.available_models().contains(&"claude-3-haiku-20240307".to_string()));
         assert!(claude.available_models().contains(&"claude-2.1".to_string()));
 
         let gemini = AIProvider::Gemini {
             api_key: "test".to_string(),
             model: "gemini-1.5-pro-latest".to_string(),
         };
-        assert!(gemini.available_models().contains(&"gemini-1.5-pro-latest".to_string()));
-        assert!(gemini.available_models().contains(&"gemini-1.0-pro".to_string()));
+        assert!(gemini.available_models().contains(&"gemini-2.5-pro".to_string()));
+        assert!(gemini.available_models().contains(&"gemini-2.5-flash".to_string()));
+        assert!(gemini.available_models().contains(&"gemini-2.0-flash".to_string()));
         assert!(gemini.available_models().contains(&"gemini-1.5-pro-latest".to_string()));
         assert!(gemini.available_models().contains(&"gemini-1.5-flash".to_string()));
-        assert!(gemini.available_models().contains(&"gemini-1.5-flash-8b".to_string()));
-        assert!(gemini.available_models().contains(&"gemini-2.0-flash-exp".to_string()));
+        assert!(gemini.available_models().contains(&"gemini-1.0-pro".to_string()));
     }
 
     #[tokio::test]

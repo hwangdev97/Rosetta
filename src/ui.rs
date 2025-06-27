@@ -268,12 +268,28 @@ impl UI {
         let mut success_count = 0;
         let mut failed_keys = Vec::new();
 
+        // Unicode-safe helper to truncate long keys without splitting multibyte characters.
+        fn ellipsize_utf8(s: &str, max_chars: usize) -> String {
+            if s.chars().count() <= max_chars {
+                return s.to_string();
+            }
+
+            // Find the byte index of the char boundary at `max_chars`.
+            let mut char_indices = s.char_indices();
+            let mut boundary = s.len();
+            for _ in 0..max_chars {
+                if let Some((idx, _)) = char_indices.next() {
+                    boundary = idx;
+                } else {
+                    break;
+                }
+            }
+            // Safety: `boundary` is guaranteed to be at a char boundary.
+            format!("{}...", &s[..boundary])
+        }
+
         for (i, key) in keys.iter().enumerate() {
-            let display_key = if key.len() > 40 { 
-                format!("{}...", &key[..37])
-            } else { 
-                key.clone() 
-            };
+            let display_key = ellipsize_utf8(key, 40);
             pb.set_message(display_key);
 
             match translator.translate_text(key, target_language, None).await {

@@ -10,6 +10,7 @@ pub struct OnboardingConfig {
     pub api_key: String,
     pub default_language: String,
     pub project_path: Option<String>,
+    pub ai_provider: AIProvider,
 }
 
 pub struct Onboarding;
@@ -59,9 +60,9 @@ impl Onboarding {
             .interact_text()?;
 
         // Select model based on provider
-        let _provider = match provider_idx {
+        let provider = match provider_idx {
             0 => {
-                let models = vec!["gpt-4-turbo-preview", "gpt-4", "gpt-3.5-turbo"];
+                let models = vec!["gpt-4o", "gpt-4-turbo-preview", "gpt-4", "gpt-3.5-turbo"];
                 let model_idx = Select::with_theme(&ColorfulTheme::default())
                     .with_prompt("Select OpenAI model")
                     .items(&models)
@@ -77,6 +78,7 @@ impl Onboarding {
                 let models = vec![
                     "claude-3-opus-20240229",
                     "claude-3-sonnet-20240229",
+                    "claude-3-haiku-20240307",
                     "claude-2.1",
                 ];
                 let model_idx = Select::with_theme(&ColorfulTheme::default())
@@ -92,11 +94,11 @@ impl Onboarding {
             }
             2 => {
                 let models = vec![
+                    "gemini-2.5-pro",
+                    "gemini-2.5-flash",
                     "gemini-1.5-pro-latest",
-                    "gemini-1.0-pro",
                     "gemini-1.5-flash",
-                    "gemini-1.5-flash-8b",
-                    "gemini-2.0-flash-exp",
+                    "gemini-1.0-pro",
                 ];
                 let model_idx = Select::with_theme(&ColorfulTheme::default())
                     .with_prompt("Select Gemini model")
@@ -146,6 +148,7 @@ impl Onboarding {
             api_key,
             default_language,
             project_path,
+            ai_provider: provider,
         }))
     }
 }
@@ -172,7 +175,7 @@ pub async fn run() -> Result<()> {
     // Select model based on provider
     let provider = match provider_idx {
         0 => {
-            let models = vec!["gpt-4-turbo-preview", "gpt-4", "gpt-3.5-turbo"];
+            let models = vec!["gpt-4o", "gpt-4-turbo-preview", "gpt-4", "gpt-3.5-turbo"];
             let model_idx = Select::with_theme(&theme)
                 .with_prompt("Select OpenAI model")
                 .items(&models)
@@ -188,6 +191,7 @@ pub async fn run() -> Result<()> {
             let models = vec![
                 "claude-3-opus-20240229",
                 "claude-3-sonnet-20240229",
+                "claude-3-haiku-20240307",
                 "claude-2.1",
             ];
             let model_idx = Select::with_theme(&theme)
@@ -203,11 +207,11 @@ pub async fn run() -> Result<()> {
         }
         2 => {
             let models = vec![
+                "gemini-2.5-pro",
+                "gemini-2.5-flash",
                 "gemini-1.5-pro-latest",
-                "gemini-1.0-pro",
                 "gemini-1.5-flash",
-                "gemini-1.5-flash-8b",
-                "gemini-2.0-flash-exp",
+                "gemini-1.0-pro",
             ];
             let model_idx = Select::with_theme(&theme)
                 .with_prompt("Select Gemini model")

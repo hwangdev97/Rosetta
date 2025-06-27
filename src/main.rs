@@ -185,13 +185,15 @@ async fn main() -> Result<()> {
             .await?;
         }
         Some(Commands::Setup) => {
-            if let Some(config) = Onboarding::start().await? {
-                let config = Config::new(
-                    config.api_key,
-                    config.default_language,
-                    config.project_path,
+            if let Some(ob) = Onboarding::start().await? {
+                let mut config = Config::new(
+                    ob.api_key,
+                    ob.default_language,
+                    ob.project_path,
                 );
-                config.save()?;
+                // Persist chosen provider (model & key) from onboarding.
+                config.update_ai_provider(ob.ai_provider)?;
+
                 println!("\n✨ Configuration saved successfully!");
             }
         }

@@ -2,6 +2,10 @@
 
 ![Rosetta Cover](./assets/Cover.png)
 
+> This is a vibe coding project, and even the README is AI-generated, **so you know what to expect**. If you have any questions, feel free to open an issue here, and I'll encourage the AI to keep improving!
+
+
+
 Modern Rust CLI tool for translating iOS `.xcstrings` files using multiple AI providers with clean terminal interface.
 
 ## Features
