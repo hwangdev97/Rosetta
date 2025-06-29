@@ -188,7 +188,36 @@ impl UI {
     ) -> Result<bool> {
         println!("Translating...");
         
-        let result = translator.translate_text(key, target_language, None).await;
+        // Get rich translation context
+        let context = match xcstrings.get_translation_context(key, &xcstrings.data.source_language) {
+            Some(ctx) => ctx,
+            None => {
+                Self::print_warning("Could not get translation context for this key");
+                return Ok(false);
+            }
+        };
+
+        // Show context information for user
+        println!();
+        println!("Translation Context:");
+        if let Some(ref meaning) = context.key_meaning {
+            Self::print_info("Key meaning", meaning);
+        }
+        if let Some(ref comment) = context.comment {
+            Self::print_info("Comment", comment);
+        }
+        if let Some(ref category) = context.usage_category {
+            Self::print_info("Category", category);
+        }
+        if !context.existing_translations.is_empty() {
+            println!("  {}: ", "Other languages".bright_black());
+            for (lang, trans) in &context.existing_translations {
+                println!("    {}: {}", lang.bright_black(), trans.cyan());
+            }
+        }
+        println!();
+
+        let result = translator.translate_with_context(&context, target_language).await;
 
         match result {
             Ok(translation) => {
@@ -265,7 +294,10 @@ impl UI {
         keys: &[String],
         target_language: &str,
     ) -> Result<()> {
-        let pb = ProgressBar::new(keys.len() as u64);
+        // Get rich translation contexts for all keys
+        let contexts = xcstrings.get_translation_contexts(keys, &xcstrings.data.source_language);
+        
+        let pb = ProgressBar::new(contexts.len() as u64);
         pb.set_style(
             ProgressStyle::default_bar()
                 .template("{bar:40.cyan/blue} {pos:>3}/{len:3} {msg}")
@@ -295,20 +327,20 @@ impl UI {
             format!("{}...", &s[..boundary])
         }
 
-        for (i, key) in keys.iter().enumerate() {
-            let display_key = ellipsize_utf8(key, 40);
+        for (_i, context) in contexts.iter().enumerate() {
+            let display_key = ellipsize_utf8(&context.key, 40);
             pb.set_message(display_key);
 
-            let result = match translator.translate_text(key, target_language, None).await {
+            let result = match translator.translate_with_context(context, target_language).await {
                 Ok(t) => Ok(t),
                 Err(e) => Err(e.to_string()),
             };
 
-            results.push((key.clone(), result));
+            results.push((context.key.clone(), result));
 
             pb.inc(1);
 
-            // Rate limiting to avoid hitting API limits
+            // Rate limiting to avoid hitting API limits  
             tokio::time::sleep(Duration::from_millis(200)).await;
         }
 

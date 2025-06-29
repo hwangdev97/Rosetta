@@ -112,6 +112,9 @@ impl Config {
     /// Display the current configuration in a user-friendly format.
     pub fn display(&self) {
         println!("\nCurrent Configuration");
+        if let Ok(path) = Self::config_path() {
+            println!("  Config path      : {}", path.display());
+        }
         println!("  Default language : {}", self.default_language);
         println!("  Project path     : {}", self.project_path.as_deref().unwrap_or("<not set>"));
         println!("  Base URL         : {}", self.base_url);

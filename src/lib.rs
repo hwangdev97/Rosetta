@@ -2,6 +2,7 @@ pub mod ai_provider;
 pub mod ascii_art;
 pub mod config;
 pub mod error;
+pub mod key_mappings;
 pub mod onboarding;
 pub mod translator;
 pub mod ui;

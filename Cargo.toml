@@ -49,3 +49,9 @@ anthropic = "0.0.8"
 
 # Table formatting for preview output
 comfy-table = "7.1"
+
+# Added from the code block
+once_cell = "1.19.0"
+
+[profile.release]
+strip = true

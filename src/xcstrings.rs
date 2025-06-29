@@ -1,10 +1,22 @@
 use crate::error::{Result, TranslatorError};
+use crate::key_mappings::{infer_key_meaning, categorize_usage};
 use crate::TranslationMode;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+// New structure for rich translation context
+#[derive(Debug, Clone)]
+pub struct TranslationContext {
+    pub key: String,
+    pub key_meaning: Option<String>,
+    pub comment: Option<String>,
+    pub source_text: String,
+    pub existing_translations: HashMap<String, String>,
+    pub usage_category: Option<String>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StringUnit {
@@ -40,7 +52,7 @@ pub struct XCStringsData {
 
 pub struct XCStringsFile {
     path: PathBuf,
-    data: XCStringsData,
+    pub data: XCStringsData,
 }
 
 impl XCStringsFile {
@@ -170,5 +182,70 @@ impl XCStringsFile {
 
     pub fn get_keys(&self) -> Vec<String> {
         self.data.strings.keys().cloned().collect()
+    }
+
+    /// Get rich translation context for a key
+    pub fn get_translation_context(&self, key: &str, source_language: &str) -> Option<TranslationContext> {
+        let entry = self.data.strings.get(key)?;
+        
+        // Get source text from source language
+        let source_text = entry
+            .localizations
+            .get(source_language)
+            .and_then(|loc| loc.string_unit.as_ref())
+            .map(|unit| unit.value.clone())?;
+
+        // If source text is empty, skip
+        if source_text.trim().is_empty() {
+            return None;
+        }
+
+        // Get existing translations from other languages
+        let mut existing_translations = HashMap::new();
+        for (lang, localization) in &entry.localizations {
+            if lang != source_language {
+                if let Some(string_unit) = &localization.string_unit {
+                    if !string_unit.value.trim().is_empty() {
+                        existing_translations.insert(lang.clone(), string_unit.value.clone());
+                    }
+                }
+            }
+        }
+
+        // Infer key meaning
+        let key_meaning = infer_key_meaning(key);
+        
+        // Categorize usage
+        let usage_category = categorize_usage(key, key_meaning.as_deref());
+
+        Some(TranslationContext {
+            key: key.to_string(),
+            key_meaning,
+            comment: entry.comment.clone(),
+            source_text,
+            existing_translations,
+            usage_category,
+        })
+    }
+
+    /// Get translation contexts for multiple keys
+    pub fn get_translation_contexts(
+        &self,
+        keys: &[String],
+        source_language: &str,
+    ) -> Vec<TranslationContext> {
+        keys.iter()
+            .filter_map(|key| self.get_translation_context(key, source_language))
+            .collect()
+    }
+
+    /// Get keys needing translation with rich context
+    pub fn get_keys_with_context_needing_translation(
+        &self,
+        target_language: &str,
+        mode: &TranslationMode,
+    ) -> Vec<TranslationContext> {
+        let keys = self.get_keys_needing_translation(target_language, mode);
+        self.get_translation_contexts(&keys, &self.data.source_language)
     }
 }

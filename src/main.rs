@@ -1,6 +1,7 @@
 mod ascii_art;
 mod config;
 mod error;
+mod key_mappings;
 mod onboarding;
 mod translator;
 mod ui;
@@ -8,7 +9,7 @@ mod xcstrings;
 mod ai_provider;
 
 use anyhow::Result;
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Parser, Subcommand, ValueEnum, CommandFactory};
 use std::path::PathBuf;
 use std::env;
 use colored::*;
@@ -90,6 +91,9 @@ enum Commands {
 
     /// Test connection with AI provider
     Test,
+
+    /// Display welcome banner, help information and project GitHub address
+    Hello,
 }
 
 #[derive(Parser)]
@@ -215,6 +219,19 @@ async fn main() -> Result<()> {
                 println!("No configuration found. Run 'rosetta setup' first.");
             }
         }
+        Some(Commands::Hello) => {
+            // Display banner (ASCII art)
+            UI::print_banner();
+
+            // Show GitHub repository link
+            println!("{}", "GitHub: https://github.com/hwangdev97/Rosetta".blue().underline());
+
+            // Print CLI help information
+            println!();
+            // Clap's `print_long_help` returns an io::Result, safe to unwrap here
+            Cli::command().print_long_help().unwrap();
+            println!();
+        }
         None => {
             // No command provided, check if config exists
             if Config::load()?.is_none() {
@@ -236,6 +253,7 @@ async fn main() -> Result<()> {
                 println!("  setup       Run initial setup and configuration");
                 println!("  config      Show configuration settings");
                 println!("  test        Test connection with AI provider");
+                println!("  hello       Display welcome banner, help information and project GitHub address");
                 println!("\nRun 'rosetta --help' for more information.");
             }
         }
