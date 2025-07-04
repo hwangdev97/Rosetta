@@ -188,17 +188,14 @@ impl XCStringsFile {
     pub fn get_translation_context(&self, key: &str, source_language: &str) -> Option<TranslationContext> {
         let entry = self.data.strings.get(key)?;
         
-        // Get source text from source language
+        // Get source text from source language; if missing or empty, fall back to key itself
         let source_text = entry
             .localizations
             .get(source_language)
             .and_then(|loc| loc.string_unit.as_ref())
-            .map(|unit| unit.value.clone())?;
-
-        // If source text is empty, skip
-        if source_text.trim().is_empty() {
-            return None;
-        }
+            .map(|unit| unit.value.clone())
+            .filter(|v| !v.trim().is_empty())
+            .unwrap_or_else(|| key.to_string());
 
         // Get existing translations from other languages
         let mut existing_translations = HashMap::new();

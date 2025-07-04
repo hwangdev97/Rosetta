@@ -13,6 +13,8 @@ pub struct Config {
     pub default_language: String,
     pub project_path: Option<String>,
     pub ai_provider: AIProvider,
+    #[serde(default = "default_batch_size")]
+    pub batch_size: usize,
 }
 
 impl Default for Config {
@@ -27,6 +29,7 @@ impl Default for Config {
                 api_key: String::new(),
                 model: String::from("gpt-3.5-turbo"),
             },
+            batch_size: 30,
         }
     }
 }
@@ -95,6 +98,11 @@ impl Config {
         self.save()
     }
 
+    pub fn update_batch_size(&mut self, batch_size: usize) -> Result<()> {
+        self.batch_size = batch_size;
+        self.save()
+    }
+
     pub fn new(api_key: String, default_language: String, project_path: Option<String>) -> Self {
         Self {
             api_key,
@@ -106,6 +114,7 @@ impl Config {
                 api_key: String::new(),
                 model: String::from("gpt-3.5-turbo"),
             },
+            batch_size: 30,
         }
     }
 
@@ -119,6 +128,7 @@ impl Config {
         println!("  Project path     : {}", self.project_path.as_deref().unwrap_or("<not set>"));
         println!("  Base URL         : {}", self.base_url);
         println!("  Model            : {}", self.model);
+        println!("  Batch size       : {}", self.batch_size);
         match &self.ai_provider {
             crate::ai_provider::AIProvider::OpenAI { model, .. } => {
                 println!("  Provider         : OpenAI ({})", model);
@@ -133,6 +143,8 @@ impl Config {
     }
 }
 
+fn default_batch_size() -> usize { 30 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -144,6 +156,7 @@ mod tests {
         let config = Config::default();
         assert_eq!(config.default_language, "en");
         assert!(config.project_path.is_none());
+        assert_eq!(config.batch_size, 30);
         
         match config.ai_provider {
             AIProvider::OpenAI { model, .. } => {
@@ -176,6 +189,7 @@ mod tests {
         let loaded: Config = serde_json::from_str(&fs::read_to_string(&config_path)?)?;
         assert_eq!(loaded.default_language, "ja");
         assert_eq!(loaded.project_path, Some("/test/path".to_string()));
+        assert_eq!(loaded.batch_size, 30);
         
         match loaded.ai_provider {
             AIProvider::Claude { api_key, model } => {
@@ -184,6 +198,10 @@ mod tests {
             }
             _ => panic!("AI provider should be Claude"),
         }
+
+        // Test batch size update
+        config.update_batch_size(50)?;
+        assert_eq!(config.batch_size, 50);
 
         Ok(())
     }

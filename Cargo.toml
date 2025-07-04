@@ -1,6 +1,6 @@
 [package]
 name = "rosetta"
-version = "0.1.4"
+version = "0.1.6"
 edition = "2021"
 authors = ["Your Name <your.email@example.com>"]
 description = "Modern iOS localization tool with beautiful CLI"

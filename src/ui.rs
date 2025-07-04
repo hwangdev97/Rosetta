@@ -105,33 +105,39 @@ impl UI {
                 println!();
             }
 
-            // Simple choice options
-            let choices = if remaining > 0 {
-                vec![
-                    "Translate",
-                    "Mark as no translation needed", 
-                    "Batch translate next 30",
-                    "Skip",
-                    "Save and exit",
-                ]
-            } else {
-                vec![
-                    "Translate",
-                    "Mark as no translation needed",
-                    "Skip", 
-                    "Save and exit",
-                ]
-            };
+            // Load user config (fallback to default) to get batch size
+            let mut config = crate::config::Config::load()?.unwrap_or_default();
+            let default_batch_size = config.batch_size;
+
+            // Build choice list dynamically
+            let mut choices: Vec<String> = Vec::new();
+            choices.push("Translate".to_string());
+            choices.push("Mark as no translation needed".to_string());
+
+            if remaining > 0 {
+                choices.push(format!("Batch translate next {}", default_batch_size));
+                choices.push("Batch translate next custom number".to_string());
+                choices.push("Skip".to_string());
+            }
+            if remaining == 0 {
+                choices.push("Skip".to_string());
+            }
+            // Save & exit is always available
+            choices.push("Save and exit".to_string());
+
+            // Create slice of &str references for dialoguer
+            let choice_refs: Vec<&str> = choices.iter().map(|s| s.as_str()).collect();
 
             let selection = Select::with_theme(&ColorfulTheme::default())
                 .with_prompt("Action")
-                .items(&choices)
+                .items(&choice_refs)
                 .default(0)
                 .interact()?;
 
-            match selection {
-                0 => {
-                    // Translate
+            // Map selections to actions depending on whether `remaining > 0`
+            match (selection, remaining > 0) {
+                (0, _) => {
+                    // Translate single key
                     if Self::translate_single_key(xcstrings, translator, key, target_language).await? {
                         xcstrings.save()?;
                         Self::print_success("Translation saved");
@@ -139,7 +145,7 @@ impl UI {
                     }
                     current += 1;
                 }
-                1 => {
+                (1, _) => {
                     // Mark as no translation needed
                     xcstrings.mark_as_no_translate(key)?;
                     xcstrings.save()?;
@@ -147,31 +153,52 @@ impl UI {
                     tokio::time::sleep(Duration::from_millis(800)).await;
                     current += 1;
                 }
-                2 if remaining > 0 => {
-                    // Batch translate
-                    let batch_size = std::cmp::min(30, remaining + 1);
+                (2, true) => {
+                    // Batch translate with default batch size from config
+                    let batch_size = std::cmp::min(default_batch_size, remaining + 1);
                     let batch_keys = &keys[current..current + batch_size];
-                    
+
                     if Self::batch_translate_confirm(batch_keys, target_language).await? {
                         Self::batch_translate_keys(xcstrings, translator, batch_keys, target_language).await?;
                         current += batch_size;
                     }
                 }
-                2 | 3 if remaining == 0 => {
-                    // Skip (when no remaining items)
+                (3, true) => {
+                    // Batch translate with custom number (and persist to config)
+                    let input: String = Input::with_theme(&ColorfulTheme::default())
+                        .with_prompt("Enter custom batch size")
+                        .validate_with(|val: &String| -> std::result::Result<(), &str> {
+                            if val.trim().parse::<usize>().ok().filter(|v| *v > 0).is_some() {
+                                Ok(())
+                            } else {
+                                Err("Please enter a positive integer")
+                            }
+                        })
+                        .interact_text()?;
+
+                    let new_batch_size = input.trim().parse::<usize>().unwrap_or(default_batch_size);
+                    // Update config and save
+                    config.update_batch_size(new_batch_size)?;
+
+                    let size = std::cmp::min(new_batch_size, remaining + 1);
+                    let batch_keys = &keys[current..current + size];
+
+                    if Self::batch_translate_confirm(batch_keys, target_language).await? {
+                        Self::batch_translate_keys(xcstrings, translator, batch_keys, target_language).await?;
+                        current += size;
+                    }
+                }
+                (4, true) => {
+                    // Skip current key
                     current += 1;
                 }
-                3 if remaining > 0 => {
-                    // Skip (when there are remaining items)
+                (5, true) | (3, false) => {
+                    // Save and exit
+                    break;
+                }
+                (2, false) => {
+                    // Skip when no remaining items
                     current += 1;
-                }
-                4 if remaining > 0 => {
-                    // Save and exit (when there are remaining items)
-                    break;
-                }
-                3 if remaining == 0 => {
-                    // Save and exit (when no remaining items)
-                    break;
                 }
                 _ => unreachable!(),
             }
@@ -271,7 +298,7 @@ impl UI {
         
         println!();
 
-        Confirm::with_theme(&ColorfulTheme::default())
+        Confirm::with_theme(&dialoguer::theme::ColorfulTheme::default())
             .with_prompt("Proceed with batch translation")
             .default(true)
             .interact()
@@ -494,6 +521,7 @@ impl UI {
 pub fn display_config(config: &Config) {
     println!("\n{}", "Current Configuration".bright_white().bold());
     println!("Default Language:  {}", config.default_language);
+    println!("Batch Size:        {}", config.batch_size);
     
     if let Some(path) = &config.project_path {
         println!("Project Path:      {}", path);
