@@ -12,7 +12,10 @@ use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum, CommandFactory};
 use std::path::PathBuf;
 use std::env;
+use std::fs;
 use colored::*;
+use dialoguer::{theme::ColorfulTheme, Confirm, MultiSelect, Select};
+use chrono::DateTime;
 
 use crate::config::Config;
 use crate::onboarding::Onboarding;
@@ -81,6 +84,17 @@ enum Commands {
         /// Skip interactive mode (auto-translate all)
         #[arg(long, help = "Skip interactive mode and auto-translate all keys")]
         auto: bool,
+    },
+
+    /// Clean up backup files
+    Clean {
+        /// Directory to search for backup files
+        #[arg(
+            short,
+            long,
+            help = "Directory to search for backup files (default: current directory)"
+        )]
+        directory: Option<PathBuf>,
     },
 
     /// Run initial setup and configuration
@@ -188,6 +202,9 @@ async fn main() -> Result<()> {
             )
             .await?;
         }
+        Some(Commands::Clean { directory }) => {
+            clean_command(directory)?;
+        }
         Some(Commands::Setup) => {
             if let Some(ob) = Onboarding::start().await? {
                 let mut config = Config::new(
@@ -250,6 +267,7 @@ async fn main() -> Result<()> {
                 println!("\nUsage: rosetta <COMMAND>");
                 println!("\nCommands:");
                 println!("  translate    Translate strings to target language");
+                println!("  clean        Clean up backup files");
                 println!("  setup       Run initial setup and configuration");
                 println!("  config      Show configuration settings");
                 println!("  test        Test connection with AI provider");
@@ -351,4 +369,237 @@ async fn translate_command(
     UI::print_info("Output", &file_path.display().to_string());
     
     Ok(())
+}
+
+fn clean_command(directory: Option<PathBuf>) -> Result<()> {
+    // Print banner
+    UI::print_banner();
+    
+    // Get target directory
+    let target_dir = directory.unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    
+    UI::print_step("Scanning for backup files...");
+    UI::print_info("Directory", &target_dir.display().to_string());
+    
+    // Find all backup files
+    let backup_files = find_backup_files(&target_dir)?;
+    
+    if backup_files.is_empty() {
+        UI::print_warning("No backup files found in the specified directory.");
+        return Ok(());
+    }
+    
+    println!();
+    UI::print_success(&format!("Found {} backup files:", backup_files.len()));
+    
+    // Display backup files with details
+    for (i, backup) in backup_files.iter().enumerate() {
+        let file_size = backup.metadata.len();
+        let size_str = format_file_size(file_size);
+        let modified_time = backup.modified_time.format("%Y-%m-%d %H:%M:%S");
+        
+        println!("  {}. {} ({}, {})", 
+                 (i + 1).to_string().bright_white(),
+                 backup.path.display().to_string().cyan(),
+                 size_str.bright_black(),
+                 modified_time.to_string().bright_black());
+    }
+    
+    println!();
+    
+    // Ask user for action
+    let options = vec![
+        "删除全部备份文件",
+        "手动选择要删除的文件",
+        "取消"
+    ];
+    
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("请选择操作")
+        .items(&options)
+        .default(0)
+        .interact()?;
+    
+    match selection {
+        0 => {
+            // Delete all
+            println!();
+            UI::print_warning("即将删除所有备份文件！");
+            
+            let confirm = Confirm::with_theme(&ColorfulTheme::default())
+                .with_prompt("确认删除全部备份文件吗？")
+                .default(false)
+                .interact()?;
+            
+            if confirm {
+                let backup_refs: Vec<&BackupFile> = backup_files.iter().collect();
+                delete_backup_files(&backup_refs)?;
+                UI::print_success(&format!("已删除 {} 个备份文件", backup_files.len()));
+            } else {
+                UI::print_info("操作", "已取消");
+            }
+        }
+        1 => {
+            // Manual selection
+            interactive_select_and_delete(&backup_files)?;
+        }
+        2 => {
+            // Cancel
+            UI::print_info("操作", "已取消");
+        }
+        _ => unreachable!(),
+    }
+    
+    Ok(())
+}
+
+#[derive(Debug)]
+struct BackupFile {
+    path: PathBuf,
+    metadata: fs::Metadata,
+    modified_time: DateTime<chrono::Local>,
+}
+
+fn find_backup_files(directory: &PathBuf) -> Result<Vec<BackupFile>> {
+    let mut backup_files = Vec::new();
+    
+    if !directory.exists() {
+        anyhow::bail!("Directory does not exist: {}", directory.display());
+    }
+    
+    if !directory.is_dir() {
+        anyhow::bail!("Path is not a directory: {}", directory.display());
+    }
+    
+    // Search recursively for backup files
+    search_directory_recursive(directory, &mut backup_files)?;
+    
+    // Sort by modification time (newest first)
+    backup_files.sort_by(|a, b| b.modified_time.cmp(&a.modified_time));
+    
+    Ok(backup_files)
+}
+
+fn search_directory_recursive(directory: &PathBuf, backup_files: &mut Vec<BackupFile>) -> Result<()> {
+    let entries = fs::read_dir(directory)?;
+    
+    for entry in entries {
+        let entry = entry?;
+        let path = entry.path();
+        
+        if path.is_dir() {
+            // Recursively search subdirectories
+            search_directory_recursive(&path, backup_files)?;
+        } else if path.is_file() {
+            // Check if it's a backup file
+            if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                if file_name.contains(".xcstrings.backup_") {
+                    let metadata = fs::metadata(&path)?;
+                    let modified_time = metadata.modified()?;
+                    let modified_time: DateTime<chrono::Local> = modified_time.into();
+                    
+                    backup_files.push(BackupFile {
+                        path: path.clone(),
+                        metadata,
+                        modified_time,
+                    });
+                }
+            }
+        }
+    }
+    
+    Ok(())
+}
+
+fn interactive_select_and_delete(backup_files: &[BackupFile]) -> Result<()> {
+    println!();
+    UI::print_info("提示", "使用 ↑↓ 移动，空格键选择，回车确认");
+    println!();
+    
+    let file_names: Vec<String> = backup_files.iter().map(|backup| {
+        let file_size = backup.metadata.len();
+        let size_str = format_file_size(file_size);
+        let modified_time = backup.modified_time.format("%Y-%m-%d %H:%M:%S");
+        
+        format!("{} ({}, {})", 
+                backup.path.display(),
+                size_str,
+                modified_time)
+    }).collect();
+    
+    let selections = MultiSelect::with_theme(&ColorfulTheme::default())
+        .with_prompt("选择要删除的备份文件")
+        .items(&file_names)
+        .interact()?;
+    
+    if selections.is_empty() {
+        UI::print_info("操作", "未选择任何文件");
+        return Ok(());
+    }
+    
+    // Show selected files for confirmation
+    println!();
+    UI::print_warning("即将删除以下文件：");
+    
+    let selected_files: Vec<&BackupFile> = selections.iter()
+        .map(|&i| &backup_files[i])
+        .collect();
+    
+    for (i, backup) in selected_files.iter().enumerate() {
+        println!("  {}. {}", 
+                 (i + 1).to_string().bright_white(),
+                 backup.path.display().to_string().red());
+    }
+    
+    println!();
+    
+    let confirm = Confirm::with_theme(&ColorfulTheme::default())
+        .with_prompt("确认删除选中的文件吗？")
+        .default(false)
+        .interact()?;
+    
+    if confirm {
+        delete_backup_files(&selected_files)?;
+        UI::print_success(&format!("已删除 {} 个备份文件", selected_files.len()));
+    } else {
+        UI::print_info("操作", "已取消");
+    }
+    
+    Ok(())
+}
+
+fn delete_backup_files(backup_files: &[&BackupFile]) -> Result<()> {
+    let mut deleted_count = 0;
+    let mut failed_count = 0;
+    
+    for backup in backup_files {
+        match fs::remove_file(&backup.path) {
+            Ok(_) => {
+                deleted_count += 1;
+                UI::print_success(&format!("已删除: {}", backup.path.display()));
+            }
+            Err(e) => {
+                failed_count += 1;
+                UI::print_error(&format!("删除失败: {} - {}", backup.path.display(), e));
+            }
+        }
+    }
+    
+    if failed_count > 0 {
+        UI::print_warning(&format!("删除完成：{} 成功，{} 失败", deleted_count, failed_count));
+    }
+    
+    Ok(())
+}
+
+fn format_file_size(bytes: u64) -> String {
+    if bytes < 1024 {
+        format!("{} B", bytes)
+    } else if bytes < 1024 * 1024 {
+        format!("{:.1} KB", bytes as f64 / 1024.0)
+    } else if bytes < 1024 * 1024 * 1024 {
+        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+    } else {
+        format!("{:.1} GB", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
+    }
 }

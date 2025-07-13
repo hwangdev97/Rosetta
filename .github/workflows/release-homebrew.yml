@@ -1,4 +1,4 @@
-name: Publish to Homebrew
+name: Release and Publish to Homebrew
 
 on:
   push:
@@ -6,19 +6,79 @@ on:
       - 'v*.*.*'  # Trigger when pushing a semantic-version tag like v1.2.3
 
 permissions:
-  contents: read  # required by the bump-formula action
+  contents: write  # required for creating releases
 
 jobs:
-  bump-formula:
-    name: Bump Homebrew formula
-    runs-on: ubuntu-latest
+  build-and-release:
+    name: Build and Release
+    runs-on: macos-latest
     steps:
-      # 1) Extract raw tag name (v1.2.3 → 1.2.3)
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+          targets: x86_64-apple-darwin,aarch64-apple-darwin
+
       - name: Extract version from tag
         id: vars
         run: echo "tag_name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
-      # 2) Automatically open a PR to update Formula/rosetta.rb in your tap
+      - name: Build for x86_64
+        run: cargo build --release --target x86_64-apple-darwin
+
+      - name: Build for aarch64
+        run: cargo build --release --target aarch64-apple-darwin
+
+      - name: Create universal binary
+        run: |
+          lipo -create -output rosetta \
+            target/x86_64-apple-darwin/release/rosetta \
+            target/aarch64-apple-darwin/release/rosetta
+
+      - name: Create tarball
+        run: |
+          tar -czf rosetta-macos-universal.tar.gz rosetta
+          shasum -a 256 rosetta-macos-universal.tar.gz > rosetta-macos-universal.tar.gz.sha256
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            rosetta-macos-universal.tar.gz
+            rosetta-macos-universal.tar.gz.sha256
+          body: |
+            ## Installation
+            
+            ### Homebrew
+            ```bash
+            brew tap hwangdev97/tools
+            brew install rosetta
+            ```
+            
+            ### Manual Installation
+            ```bash
+            curl -L https://github.com/hwangdev97/Rosetta/releases/download/${{ steps.vars.outputs.tag_name }}/rosetta-macos-universal.tar.gz | tar -xz
+            chmod +x rosetta
+            sudo mv rosetta /usr/local/bin/
+            ```
+            
+            ## SHA256 Checksum
+            See `rosetta-macos-universal.tar.gz.sha256` for verification.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  bump-formula:
+    name: Update Homebrew formula
+    runs-on: ubuntu-latest
+    needs: build-and-release
+    steps:
+      - name: Extract version from tag
+        id: vars
+        run: echo "tag_name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
       - name: Update Rosetta formula in homebrew tap
         uses: dawidd6/action-homebrew-bump-formula@v5
         with:
@@ -26,5 +86,4 @@ jobs:
           tap: hwangdev97/homebrew-tools
           formula: rosetta
           tag: ${{ steps.vars.outputs.tag_name }}
-          # Source tarball URL generated automatically by GitHub for this tag
-          url: https://github.com/hwangdev97/Rosetta/archive/refs/tags/${{ steps.vars.outputs.tag_name }}.tar.gz 
+          url: https://github.com/hwangdev97/Rosetta/releases/download/${{ steps.vars.outputs.tag_name }}/rosetta-macos-universal.tar.gz 
